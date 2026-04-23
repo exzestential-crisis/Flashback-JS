@@ -218,8 +218,6 @@ const FlipCard = ({ card, size = "Full", isNew = false, onFlip, onDelete }) => {
         }
       );
 
-      if (!response.ok) throw new Error("Failed to delete card");
-
       // Close modal and notify parent component
       setIsDeleteModalOpen(false);
       if (onDelete) {

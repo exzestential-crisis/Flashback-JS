@@ -152,7 +152,7 @@ const deleteDeck = async (req, res) => {
   const userId = req.user.userId;
 
   try {
-    // First check if the deck exists and belongs to the user
+    // Check if the deck exists and belongs to the user
     const [deck] = await db.query(
       `SELECT deck_id FROM decks 
        WHERE deck_id = ? AND user_id = ? AND is_deleted = 0`,
@@ -165,18 +165,30 @@ const deleteDeck = async (req, res) => {
         .json({ message: "Deck not found or unauthorized" });
     }
 
-    const [result] = await db.query(
-      `DELETE FROM decks
-      WHERE deck_id = ?`,
-      [deckId, userId]
+    // Start transaction
+    await db.query("START TRANSACTION");
+
+    // Delete reviews associated with cards in the deck
+    await db.query(
+      `DELETE FROM reviews 
+       WHERE card_id IN (
+         SELECT card_id FROM cards WHERE deck_id = ?
+       )`,
+      [deckId]
     );
 
-    if (result.affectedRows === 0) {
-      return res.status(400).json({ message: "Failed to delete deck" });
-    }
+    // Delete cards in the deck
+    await db.query("DELETE FROM cards WHERE deck_id = ?", [deckId]);
 
-    res.json({ message: "Deck deleted successfully" });
+    // Delete the deck
+    await db.query("DELETE FROM decks WHERE deck_id = ?", [deckId]);
+
+    // Commit transaction
+    await db.query("COMMIT");
+
+    res.json({ message: "Deck and all related data deleted successfully" });
   } catch (err) {
+    await db.query("ROLLBACK");
     console.error("❌ DB error:", err.message);
     res.status(500).json({ message: "Server error deleting deck" });
   }

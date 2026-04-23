@@ -218,13 +218,11 @@ const updateCard = async (req, res) => {
     res.status(500).json({ message: "Failed to update card" });
   }
 };
-
 const deleteCard = async (req, res) => {
   const userId = req.user.userId;
   const { cardId } = req.params;
 
   try {
-    // Verify the card belongs to the user
     const [cardCheck] = await db.query(
       `SELECT cards.card_id, cards.deck_id, cards.position 
        FROM cards 
@@ -242,24 +240,26 @@ const deleteCard = async (req, res) => {
     const deckId = cardCheck[0].deck_id;
     const cardPosition = cardCheck[0].position;
 
-    // Begin transaction
     await db.query("START TRANSACTION");
 
-    // Delete the card
+    // Delete related reviews first to avoid foreign key constraint errors
+    await db.query("DELETE FROM reviews WHERE card_id = ?", [cardId]);
+
+    // Then delete the card
     await db.query("DELETE FROM cards WHERE card_id = ?", [cardId]);
 
-    // Update the positions of other cards in the same deck
+    // Reorder positions of other cards in the deck
     await db.query(
       "UPDATE cards SET position = position - 1 WHERE deck_id = ? AND position > ?",
       [deckId, cardPosition]
     );
 
-    // Commit transaction
     await db.query("COMMIT");
 
-    res.status(200).json({ message: "Card deleted successfully" });
+    res
+      .status(200)
+      .json({ message: "Card and associated reviews deleted successfully" });
   } catch (err) {
-    // Rollback in case of error
     await db.query("ROLLBACK");
     console.error("Error deleting card:", err);
     res.status(500).json({ message: "Failed to delete card" });
